@@ -15,15 +15,27 @@ logger = logging.getLogger(__name__)
 _db_lock = asyncio.Lock()
 
 
-def _ensure_db_dir() -> None:
-    db_dir = os.path.dirname(os.path.abspath(settings.DB_PATH))
+def _ensure_db_dir(db_path: Optional[str] = None) -> str:
+    path = os.path.abspath(db_path or settings.DB_PATH)
+    db_dir = os.path.dirname(path)
     if db_dir:
         os.makedirs(db_dir, exist_ok=True)
+    return path
 
 
 def get_connection() -> sqlite3.Connection:
-    _ensure_db_dir()
-    conn = sqlite3.connect(settings.DB_PATH, detect_types=sqlite3.PARSE_DECLTYPES)
+    path = _ensure_db_dir()
+    try:
+        conn = sqlite3.connect(path, detect_types=sqlite3.PARSE_DECLTYPES)
+    except sqlite3.OperationalError:
+        # fallback если в Railway задан несуществующий /data без volume
+        fallback = "/app/data/lingva.db"
+        if path != fallback:
+            logger.warning("Не удалось открыть %s, пробую %s", path, fallback)
+            path = _ensure_db_dir(fallback)
+            conn = sqlite3.connect(path, detect_types=sqlite3.PARSE_DECLTYPES)
+        else:
+            raise
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")

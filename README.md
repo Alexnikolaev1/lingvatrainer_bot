@@ -99,15 +99,21 @@ curl https://YOUR-APP.up.railway.app/health
 
 | Причина | Решение |
 |---------|---------|
-| Нет `TELEGRAM_BOT_TOKEN` | Variables → добавьте ключ от @BotFather |
-| Неверное имя переменной | Должно быть `TELEGRAM_BOT_TOKEN`, не `BOT_TOKEN` |
-| Нет Public Networking | Service → Settings → Networking → **Generate Domain** |
-| Нет Volume `/data` | Добавьте volume mount `/data` (или уберите `DB_PATH`) |
-| Старый код без PORT-fix | Передеплойте после `git pull` |
+| **Старый код на Railway** | В логах должно быть `LINGVA.AI v1.1.0-railway` и `Boot mode=webhook`. Если `Starting polling...` — передеплойте! |
+| Нет `TELEGRAM_BOT_TOKEN` | Variables → ключ от @BotFather |
+| `DB_PATH=/data/...` без volume | **Удалите** `DB_PATH` из Variables или поставьте `/app/data/lingva.db` |
+| Нет Public Domain | Settings → Networking → **Generate Domain** |
 
-После деплоя в логах должно быть:
+**В Railway Variables удалите или исправьте:**
 ```
-HTTP server on 0.0.0.0:8080 (webhook=https://...)
+DB_PATH=/data/lingva.db   ← УДАЛИТЬ (ломает без volume)
+```
+
+После деплоя в логах:
+```
+LINGVA.AI entrypoint
+Boot mode=webhook v1.1.0-railway
+HTTP server on 0.0.0.0:8080
 БД инициализирована.
 ```
 

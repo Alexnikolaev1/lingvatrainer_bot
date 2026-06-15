@@ -32,6 +32,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+APP_VERSION = "1.1.0-railway"
+
 WEBHOOK_PATH = f"/webhook/{settings.BOT_TOKEN}"
 
 ROUTERS = [
@@ -63,7 +65,9 @@ def create_dispatcher() -> Dispatcher:
 
 
 async def on_startup(bot: Bot) -> None:
-    logger.info("Startup: port=%s webhook=%s", os.getenv("PORT"), settings.WEBHOOK_URL)
+    logger.info("LINGVA.AI v%s", APP_VERSION)
+    logger.info("Startup: railway=%s port=%s webhook=%s",
+                os.getenv("RAILWAY_ENVIRONMENT"), os.getenv("PORT"), settings.WEBHOOK_URL)
     logger.info("Gemini model: %s", settings.GEMINI_MODEL)
     logger.info("DB path: %s", settings.DB_PATH)
 
@@ -132,11 +136,20 @@ async def run_polling() -> None:
 
 
 def _use_web_server() -> bool:
-    """Railway всегда задаёт PORT — без HTTP-сервера healthcheck падает."""
-    return bool(os.getenv("PORT")) or bool(settings.WEBHOOK_URL)
+    """На Railway всегда HTTP (healthcheck). Локально — polling без PORT."""
+    if os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_SERVICE_ID"):
+        return True
+    if os.getenv("PORT"):
+        return True
+    if settings.WEBHOOK_URL:
+        return True
+    return False
 
 
 if __name__ == "__main__":
+    mode = "webhook" if _use_web_server() else "polling"
+    logger.info("Boot mode=%s v%s", mode, APP_VERSION)
+
     if _use_web_server():
         port = int(os.getenv("PORT", 8080))
         logger.info("HTTP server on 0.0.0.0:%s (webhook=%s)", port, settings.WEBHOOK_URL)

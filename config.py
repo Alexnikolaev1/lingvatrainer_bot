@@ -25,6 +25,23 @@ def _resolve_webhook_url() -> Optional[str]:
     return None
 
 
+def _is_railway() -> bool:
+    return bool(os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_SERVICE_ID"))
+
+
+def _resolve_db_path() -> str:
+    """
+    Путь к SQLite. На Railway по умолчанию /app/data (writable без volume).
+    Volume опционален: смонтируйте на /app/data для персистентности.
+    """
+    explicit = os.getenv("DB_PATH", "").strip()
+    if explicit:
+        return explicit
+    if _is_railway() or os.getenv("PORT"):
+        return "/app/data/lingva.db"
+    return "lingva.db"
+
+
 @dataclass
 class Settings:
     # === Telegram ===
@@ -73,7 +90,7 @@ class Settings:
     DATAMUSE_CACHE_TTL_HOURS: int = 24
 
     # === SQLite ===
-    DB_PATH: str = field(default_factory=lambda: os.getenv("DB_PATH", "lingva.db"))
+    DB_PATH: str = field(default_factory=_resolve_db_path)
 
     # === Диалог ===
     TALK_HISTORY_SIZE: int = 12
