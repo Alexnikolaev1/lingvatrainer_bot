@@ -4,6 +4,7 @@
 
 import asyncio
 import logging
+import os
 import sqlite3
 from typing import List, Optional, Tuple
 
@@ -14,7 +15,14 @@ logger = logging.getLogger(__name__)
 _db_lock = asyncio.Lock()
 
 
+def _ensure_db_dir() -> None:
+    db_dir = os.path.dirname(os.path.abspath(settings.DB_PATH))
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
+
+
 def get_connection() -> sqlite3.Connection:
+    _ensure_db_dir()
     conn = sqlite3.connect(settings.DB_PATH, detect_types=sqlite3.PARSE_DECLTYPES)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")

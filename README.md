@@ -95,7 +95,21 @@ curl https://YOUR-APP.up.railway.app/health
 
 Логи: `railway logs`
 
-Health check настроен в `railway.toml` → `/health`
+### Troubleshooting: Healthcheck failure
+
+| Причина | Решение |
+|---------|---------|
+| Нет `TELEGRAM_BOT_TOKEN` | Variables → добавьте ключ от @BotFather |
+| Неверное имя переменной | Должно быть `TELEGRAM_BOT_TOKEN`, не `BOT_TOKEN` |
+| Нет Public Networking | Service → Settings → Networking → **Generate Domain** |
+| Нет Volume `/data` | Добавьте volume mount `/data` (или уберите `DB_PATH`) |
+| Старый код без PORT-fix | Передеплойте после `git pull` |
+
+После деплоя в логах должно быть:
+```
+HTTP server on 0.0.0.0:8080 (webhook=https://...)
+БД инициализирована.
+```
 
 ## Архитектура
 

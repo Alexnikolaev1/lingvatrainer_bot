@@ -8,19 +8,30 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 
+def _resolve_webhook_url() -> Optional[str]:
+    """Собрать URL вебхука из env (Railway задаёт RAILWAY_PUBLIC_DOMAIN)."""
+    explicit = os.getenv("WEBHOOK_URL")
+    if explicit:
+        return explicit.rstrip("/")
+
+    for key in ("RAILWAY_PUBLIC_DOMAIN", "RAILWAY_STATIC_URL"):
+        value = os.getenv(key, "").strip()
+        if not value:
+            continue
+        if value.startswith("http://") or value.startswith("https://"):
+            return value.rstrip("/")
+        return f"https://{value}"
+
+    return None
+
+
 @dataclass
 class Settings:
     # === Telegram ===
     BOT_TOKEN: str = field(default_factory=lambda: os.getenv("TELEGRAM_BOT_TOKEN", ""))
 
     # === Вебхук ===
-    WEBHOOK_URL: Optional[str] = field(
-        default_factory=lambda: (
-            os.getenv("WEBHOOK_URL")
-            or os.getenv("RAILWAY_STATIC_URL")
-            or (f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN')}" if os.getenv("RAILWAY_PUBLIC_DOMAIN") else None)
-        )
-    )
+    WEBHOOK_URL: Optional[str] = field(default_factory=lambda: _resolve_webhook_url())
 
     # === AI API (все с бесплатными тирами) ===
     GEMINI_API_KEY: str = field(default_factory=lambda: os.getenv("GEMINI_API_KEY", ""))

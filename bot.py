@@ -63,11 +63,15 @@ def create_dispatcher() -> Dispatcher:
 
 
 async def on_startup(bot: Bot) -> None:
-    await init_db()
-    logger.info("БД инициализирована.")
+    logger.info("Startup: port=%s webhook=%s", os.getenv("PORT"), settings.WEBHOOK_URL)
     logger.info("Gemini model: %s", settings.GEMINI_MODEL)
-    logger.info("Groq LLM: %s", settings.GROQ_LLM_MODEL)
     logger.info("DB path: %s", settings.DB_PATH)
+
+    try:
+        await init_db()
+        logger.info("БД инициализирована.")
+    except Exception:
+        logger.exception("Ошибка инициализации БД — сервер продолжит работу")
 
     if "2.0-flash" in settings.GEMINI_MODEL:
         logger.error(
@@ -77,11 +81,14 @@ async def on_startup(bot: Bot) -> None:
         )
 
     if settings.WEBHOOK_URL:
-        url = f"{settings.WEBHOOK_URL}{WEBHOOK_PATH}"
-        await bot.set_webhook(url)
-        logger.info(f"Webhook: {url}")
+        url = f"{settings.WEBHOOK_URL.rstrip('/')}{WEBHOOK_PATH}"
+        try:
+            await bot.set_webhook(url)
+            logger.info("Webhook установлен: %s", url)
+        except Exception:
+            logger.exception("Не удалось установить webhook — бот ответит после redeploy")
     else:
-        logger.info("Polling mode.")
+        logger.warning("WEBHOOK_URL не задан — нужен public domain на Railway")
 
     asyncio.create_task(start_scheduler(bot))
 
@@ -92,7 +99,11 @@ async def on_shutdown(bot: Bot) -> None:
 
 
 async def health_handler(_request: web.Request) -> web.Response:
-    return web.Response(text="OK")
+    return web.Response(text="OK", content_type="text/plain")
+
+
+async def root_handler(_request: web.Request) -> web.Response:
+    return web.Response(text="LINGVA.AI bot is running", content_type="text/plain")
 
 
 def create_app() -> web.Application:
@@ -102,6 +113,7 @@ def create_app() -> web.Application:
     dp.shutdown.register(on_shutdown)
 
     app = web.Application()
+    app.router.add_get("/", root_handler)
     app.router.add_get("/health", health_handler)
 
     handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
@@ -119,10 +131,16 @@ async def run_polling() -> None:
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 
 
+def _use_web_server() -> bool:
+    """Railway всегда задаёт PORT — без HTTP-сервера healthcheck падает."""
+    return bool(os.getenv("PORT")) or bool(settings.WEBHOOK_URL)
+
+
 if __name__ == "__main__":
-    if settings.WEBHOOK_URL:
+    if _use_web_server():
         port = int(os.getenv("PORT", 8080))
-        logger.info(f"Webhook server on port {port}")
+        logger.info("HTTP server on 0.0.0.0:%s (webhook=%s)", port, settings.WEBHOOK_URL)
         web.run_app(create_app(), host="0.0.0.0", port=port)
     else:
+        logger.info("Polling mode (local dev)")
         asyncio.run(run_polling())
