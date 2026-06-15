@@ -80,6 +80,18 @@ async def cmd_help(message: types.Message) -> None:
     await message.answer(HELP_TEXT, reply_markup=main_menu())
 
 
+@router.message(Command("myid", "id"))
+async def cmd_myid(message: types.Message) -> None:
+    """Показать Telegram user ID (нужен для ALLOWED_USER_IDS)."""
+    u = message.from_user
+    await message.answer(
+        f"🆔 <b>Ваш Telegram ID:</b> <code>{u.id}</code>\n"
+        f"👤 Username: @{u.username or '—'}\n\n"
+        "Добавьте этот ID в Railway → Variables →\n"
+        "<code>ALLOWED_USER_IDS={id}</code>".format(id=u.id)
+    )
+
+
 @router.message(lambda m: m.text and m.text.strip() == "📖 Слово")
 async def menu_word(message: types.Message) -> None:
     await message.answer(

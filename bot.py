@@ -24,6 +24,7 @@ from handlers.start import router as start_router
 from handlers.stats import router as stats_router
 from handlers.talk import router as talk_router
 from handlers.vocabulary import router as vocab_router
+from middleware.access import AccessControlMiddleware
 from middleware.user import UserMiddleware
 from scheduler import start_scheduler
 
@@ -65,6 +66,8 @@ def create_bot() -> Bot:
 
 def create_dispatcher() -> Dispatcher:
     dp = Dispatcher()
+    dp.message.middleware(AccessControlMiddleware())
+    dp.callback_query.middleware(AccessControlMiddleware())
     dp.message.middleware(UserMiddleware())
     for router in ROUTERS:
         dp.include_router(router)
@@ -98,6 +101,11 @@ async def run_railway() -> None:
 
     me = await bot.get_me()
     _say(f"Bot: @{me.username}")
+
+    if settings.allowed_user_ids:
+        _say(f"Access: только {len(settings.allowed_user_ids)} user(s)")
+    else:
+        _say("Access: открыт для всех (задайте ALLOWED_USER_IDS)")
 
     wh_info = await bot.get_webhook_info()
     _say(f"Webhook до старта: {wh_info.url or '(нет)'}")

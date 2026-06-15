@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
+from config import settings
 from database import db_fetchall, db_fetchone
 
 logger = logging.getLogger(__name__)
@@ -46,6 +47,8 @@ async def _check_and_notify(bot: Bot) -> None:
 
     for user in users:
         user_id = user["user_id"]
+        if settings.allowed_user_ids and user_id not in settings.allowed_user_ids:
+            continue
         if _last_notified.get(user_id) == today:
             continue
 

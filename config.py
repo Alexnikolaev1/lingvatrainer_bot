@@ -60,6 +60,22 @@ def _resolve_db_path() -> str:
     return "lingva.db"
 
 
+def _parse_allowed_user_ids() -> Optional[frozenset]:
+    """
+    ALLOWED_USER_IDS=123456789 или 123,456,789
+    Пусто → доступ для всех.
+    """
+    raw = os.getenv("ALLOWED_USER_IDS", "").strip()
+    if not raw:
+        return None
+    ids = set()
+    for part in raw.replace(";", ",").split(","):
+        part = part.strip()
+        if part.isdigit():
+            ids.add(int(part))
+    return frozenset(ids) if ids else None
+
+
 @dataclass
 class Settings:
     # === Telegram ===
@@ -109,6 +125,10 @@ class Settings:
 
     # === SQLite ===
     DB_PATH: str = field(default_factory=_resolve_db_path)
+
+    # === Доступ ===
+    # ALLOWED_USER_IDS=123456789 — только эти Telegram user ID (через запятую)
+    allowed_user_ids: Optional[frozenset] = field(default_factory=_parse_allowed_user_ids)
 
     # === Диалог ===
     TALK_HISTORY_SIZE: int = 12
