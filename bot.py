@@ -5,8 +5,7 @@ LINGVA.AI — персональный AI-репетитор английско�
 import asyncio
 import logging
 import os
-
-from typing import Optional
+import sys
 
 from aiohttp import web
 from aiogram import Bot, Dispatcher
@@ -31,11 +30,12 @@ from scheduler import start_scheduler
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    stream=sys.stdout,
+    force=True,
 )
 logger = logging.getLogger(__name__)
 
-APP_VERSION = "1.2.0-railway"
-
+APP_VERSION = "1.3.0-railway"
 WEBHOOK_PATH = f"/webhook/{settings.BOT_TOKEN}"
 
 ROUTERS = [
@@ -50,7 +50,10 @@ ROUTERS = [
     stats_router,
 ]
 
-_polling_task: Optional[asyncio.Task] = None
+
+def _say(msg: str) -> None:
+    print(msg, flush=True)
+    logger.info(msg)
 
 
 def create_bot() -> Bot:
@@ -68,138 +71,104 @@ def create_dispatcher() -> Dispatcher:
     return dp
 
 
-def _log_railway_env() -> None:
-    for key in sorted(os.environ):
-        if key.startswith("RAILWAY_") and ("DOMAIN" in key or "URL" in key):
-            logger.info("env %s=%s", key, os.environ[key])
-
-
-def _make_on_startup(dp: Dispatcher, *, web_server: bool = False):
-    async def on_startup(bot: Bot) -> None:
-        global _polling_task
-        webhook_base = get_webhook_url()
-
-        logger.info("LINGVA.AI v%s", APP_VERSION)
-        logger.info(
-            "Startup: railway=%s port=%s mode=%s",
-            os.getenv("RAILWAY_ENVIRONMENT"),
-            os.getenv("PORT"),
-            "webhook" if webhook_base else "polling-fallback",
-        )
-        logger.info("Gemini model: %s", settings.GEMINI_MODEL)
-        logger.info("DB path: %s", settings.DB_PATH)
-
-        if not webhook_base:
-            _log_railway_env()
-
-        try:
-            await init_db()
-            logger.info("БД инициализирована.")
-        except Exception:
-            logger.exception("Ошибка инициализации БД")
-
-        if "2.0-flash" in settings.GEMINI_MODEL:
-            logger.error("Модель %s отключена! Используйте gemini-2.5-flash-lite", settings.GEMINI_MODEL)
-
-        if webhook_base:
-            url = f"{webhook_base.rstrip('/')}{WEBHOOK_PATH}"
-            try:
-                await bot.set_webhook(url, drop_pending_updates=True)
-                logger.info("Webhook установлен: %s", url)
-            except Exception:
-                logger.exception("Не удалось установить webhook")
-        elif web_server:
-            logger.warning(
-                "Публичный домен не найден → polling fallback.\n"
-                "Для webhook: Railway → Settings → Networking → Generate Domain,\n"
-                "затем Variables → WEBHOOK_URL=https://ВАШ-ДОМЕН.up.railway.app"
-            )
-            try:
-                await bot.delete_webhook(drop_pending_updates=True)
-                _polling_task = asyncio.create_task(
-                    dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
-                )
-                logger.info("Polling запущен — бот должен отвечать на /start")
-            except Exception:
-                logger.exception("Не удалось запустить polling")
-        else:
-            await bot.delete_webhook(drop_pending_updates=True)
-            logger.info("Polling mode (local)")
-
-        asyncio.create_task(start_scheduler(bot))
-
-    return on_startup
-
-
-def _make_on_shutdown():
-    async def on_shutdown(bot: Bot) -> None:
-        global _polling_task
-        if _polling_task and not _polling_task.done():
-            _polling_task.cancel()
-            try:
-                await _polling_task
-            except asyncio.CancelledError:
-                pass
-        await bot.delete_webhook()
-
-    return on_shutdown
-
-
 async def health_handler(_request: web.Request) -> web.Response:
     return web.Response(text="OK", content_type="text/plain")
 
 
 async def root_handler(_request: web.Request) -> web.Response:
     mode = "webhook" if get_webhook_url() else "polling"
-    return web.Response(
-        text=f"LINGVA.AI v{APP_VERSION} ({mode})",
-        content_type="text/plain",
+    return web.Response(text=f"LINGVA.AI v{APP_VERSION} ({mode})", content_type="text/plain")
+
+
+def _is_production() -> bool:
+    return bool(
+        os.getenv("RAILWAY_ENVIRONMENT")
+        or os.getenv("RAILWAY_SERVICE_ID")
+        or os.getenv("PORT")
     )
 
 
-def create_app() -> web.Application:
+async def run_railway() -> None:
+    _say(f"=== LINGVA.AI v{APP_VERSION} ===")
+
     bot = create_bot()
     dp = create_dispatcher()
-    dp.startup.register(_make_on_startup(dp, web_server=True))
-    dp.shutdown.register(_make_on_shutdown())
+    port = int(os.getenv("PORT", 8080))
+    webhook_base = get_webhook_url()
+
+    me = await bot.get_me()
+    _say(f"Bot: @{me.username}")
+
+    wh_info = await bot.get_webhook_info()
+    _say(f"Webhook до старта: {wh_info.url or '(нет)'}")
+
+    await init_db()
+    _say(f"DB: {settings.DB_PATH}")
+
+    asyncio.create_task(start_scheduler(bot))
 
     app = web.Application()
-    app.router.add_get("/", root_handler)
     app.router.add_get("/health", health_handler)
+    app.router.add_get("/", root_handler)
 
-    handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
-    handler.register(app, path=WEBHOOK_PATH)
-    setup_application(app, dp, bot=bot)
-    return app
+    poll_task = None
+
+    if webhook_base:
+        url = f"{webhook_base.rstrip('/')}{WEBHOOK_PATH}"
+        handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
+        handler.register(app, path=WEBHOOK_PATH)
+        setup_application(app, dp, bot=bot)
+        await bot.set_webhook(url, drop_pending_updates=True)
+        _say(f"MODE=webhook → {url}")
+    else:
+        if wh_info.url:
+            await bot.delete_webhook(drop_pending_updates=True)
+            _say(f"Удалён старый webhook: {wh_info.url}")
+
+        poll_task = asyncio.create_task(
+            dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+        )
+        _say("MODE=polling → бот опрашивает Telegram (нажми /start)")
+
+        for key in sorted(os.environ):
+            if key.startswith("RAILWAY_") and ("DOMAIN" in key or "URL" in key):
+                _say(f"  env {key}={os.environ[key]}")
+
+    runner = web.AppRunner(app)
+    await runner.setup()
+    await web.TCPSite(runner, host="0.0.0.0", port=port).start()
+    _say(f"HTTP :{port} ready")
+
+    try:
+        if poll_task:
+            await poll_task
+        else:
+            stop = asyncio.Event()
+            await stop.wait()
+    finally:
+        if poll_task and not poll_task.done():
+            poll_task.cancel()
+        await runner.cleanup()
+        await bot.session.close()
 
 
-async def run_polling() -> None:
+async def run_local_polling() -> None:
+    _say(f"=== LINGVA.AI v{APP_VERSION} local polling ===")
     bot = create_bot()
     dp = create_dispatcher()
-    dp.startup.register(_make_on_startup(dp, web_server=False))
-    dp.shutdown.register(_make_on_shutdown())
-    logger.info("Starting polling...")
+    await init_db()
+    asyncio.create_task(start_scheduler(bot))
+    await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 
 
-def _use_web_server() -> bool:
-    if os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_SERVICE_ID"):
-        return True
-    if os.getenv("PORT"):
-        return True
-    if get_webhook_url():
-        return True
-    return False
-
-
 if __name__ == "__main__":
-    webhook = get_webhook_url()
-    mode = "webhook" if webhook else ("web+poll" if _use_web_server() else "polling")
-    logger.info("Boot mode=%s v%s", mode, APP_VERSION)
-
-    if _use_web_server():
-        port = int(os.getenv("PORT", 8080))
-        logger.info("HTTP server on 0.0.0.0:%s (webhook=%s)", port, webhook)
-        web.run_app(create_app(), host="0.0.0.0", port=port)
-    else:
-        asyncio.run(run_polling())
+    try:
+        if _is_production():
+            asyncio.run(run_railway())
+        else:
+            asyncio.run(run_local_polling())
+    except Exception as exc:
+        _say(f"FATAL: {exc}")
+        logger.exception("Crash")
+        sys.exit(1)
