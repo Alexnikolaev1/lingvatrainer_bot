@@ -9,12 +9,13 @@ from typing import Optional
 
 
 def _resolve_webhook_url() -> Optional[str]:
-    """Собрать URL вебхука из env (Railway задаёт RAILWAY_PUBLIC_DOMAIN)."""
-    explicit = os.getenv("WEBHOOK_URL")
+    """Собрать публичный URL для Telegram webhook (читается при каждом старте)."""
+    explicit = os.getenv("WEBHOOK_URL", "").strip()
     if explicit:
         return explicit.rstrip("/")
 
-    for key in ("RAILWAY_PUBLIC_DOMAIN", "RAILWAY_STATIC_URL"):
+    # Railway: приоритетные переменные
+    for key in ("RAILWAY_STATIC_URL", "RAILWAY_PUBLIC_DOMAIN"):
         value = os.getenv(key, "").strip()
         if not value:
             continue
@@ -22,7 +23,24 @@ def _resolve_webhook_url() -> Optional[str]:
             return value.rstrip("/")
         return f"https://{value}"
 
+    # Любая Railway-переменная с доменом
+    for key, value in os.environ.items():
+        if not key.startswith("RAILWAY_") or not value:
+            continue
+        if "DOMAIN" not in key and "URL" not in key:
+            continue
+        v = value.strip()
+        if "railway.app" in v or "railway.dev" in v:
+            if v.startswith("http://") or v.startswith("https://"):
+                return v.rstrip("/")
+            return f"https://{v}"
+
     return None
+
+
+def get_webhook_url() -> Optional[str]:
+    """Актуальный webhook URL (вызов в runtime, не из кэша settings)."""
+    return _resolve_webhook_url()
 
 
 def _is_railway() -> bool:
