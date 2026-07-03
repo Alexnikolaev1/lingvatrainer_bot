@@ -16,6 +16,7 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 from config import get_webhook_url, settings
 from database import init_db
 from handlers.grammar import router as grammar_router
+from handlers.lessons import router as lessons_router
 from handlers.listening import router as listening_router
 from handlers.reading import router as reading_router
 from handlers.review import router as review_router
@@ -36,11 +37,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-APP_VERSION = "1.3.0-railway"
+APP_VERSION = "1.4.0-lessons"
 WEBHOOK_PATH = f"/webhook/{settings.BOT_TOKEN}"
 
 ROUTERS = [
     start_router,
+    lessons_router,
     talk_router,
     vocab_router,
     review_router,

@@ -48,6 +48,29 @@ def talk_topics_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def lesson_settings_keyboard(enabled: bool, words: int) -> InlineKeyboardMarkup:
+    toggle = "🔕 Выкл уроки" if enabled else "🔔 Вкл уроки"
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=toggle, callback_data="lesson_toggle")],
+            [
+                InlineKeyboardButton(
+                    text=f"{'✓ ' if words == 1 else ''}1 слово",
+                    callback_data="lesson_words:1",
+                ),
+                InlineKeyboardButton(
+                    text=f"{'✓ ' if words == 2 else ''}2 слова",
+                    callback_data="lesson_words:2",
+                ),
+                InlineKeyboardButton(
+                    text=f"{'✓ ' if words == 3 else ''}3 слова",
+                    callback_data="lesson_words:3",
+                ),
+            ],
+        ]
+    )
+
+
 def word_actions(word_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[

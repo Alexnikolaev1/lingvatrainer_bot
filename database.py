@@ -127,6 +127,11 @@ def _migrate_users(conn: sqlite3.Connection) -> None:
         ("streak_days", "INTEGER DEFAULT 0"),
         ("total_xp", "INTEGER DEFAULT 0"),
         ("last_activity", "TIMESTAMP"),
+        ("lessons_enabled", "INTEGER DEFAULT 1"),
+        ("words_per_lesson", "INTEGER DEFAULT 2"),
+        ("last_morning_lesson", "TEXT"),
+        ("last_evening_lesson", "TEXT"),
+        ("lesson_counter", "INTEGER DEFAULT 0"),
     ]
     for name, typedef in migrations:
         if name not in cols:
